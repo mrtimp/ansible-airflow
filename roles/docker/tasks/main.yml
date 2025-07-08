@@ -27,34 +27,42 @@
 - name: Disable Docker CE stable debuginfo repo
   ansible.builtin.command: yum-config-manager --disable docker-ce-stable-debuginfo
   changed_when: true
+  when: ansible_architecture == "aarch64"
 
 - name: Disable Docker CE stable source repo
   ansible.builtin.command: yum-config-manager --disable docker-ce-stable-source
   changed_when: true
+  when: ansible_architecture == "aarch64"
 
 - name: Disable Docker CE test repo
   ansible.builtin.command: yum-config-manager --disable docker-ce-test
   changed_when: true
+  when: ansible_architecture == "aarch64"
 
 - name: Disable Docker CE test debuginfo repo
   ansible.builtin.command: yum-config-manager --disable docker-ce-test-debuginfo
   changed_when: true
+  when: ansible_architecture == "aarch64"
 
 - name: Disable Docker CE test source repo
   ansible.builtin.command: yum-config-manager --disable docker-ce-test-source
   changed_when: true
+  when: ansible_architecture == "aarch64"
 
 - name: Disable Docker CE nightly repo
   ansible.builtin.command: yum-config-manager --disable docker-ce-nightly
   changed_when: true
+  when: ansible_architecture == "aarch64"
 
 - name: Disable Docker CE nightly repo
   ansible.builtin.command: yum-config-manager --disable docker-ce-nightly-debuginfo
   changed_when: true
+  when: ansible_architecture == "aarch64"
 
 - name: Disable Docker CE nightly source repo
   ansible.builtin.command: yum-config-manager --disable docker-ce-nightly-source
   changed_when: true
+  when: ansible_architecture == "aarch64"
 
 - name: Install Docker
   ansible.builtin.yum:
