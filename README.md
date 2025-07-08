@@ -19,7 +19,7 @@ Ensure that:
 # Automated Provisioning
 
 ```bash
-# check that Ansible is installed, configured and can reach the destination host
+# check that Ansible is installed, configured and can reach the destination instance
 ansible -i inventory.ini all -m ping
 ```
 
