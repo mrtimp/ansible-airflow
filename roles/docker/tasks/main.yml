@@ -1,0 +1,201 @@
+---
+- name: Ensure system packages are up to date
+  ansible.builtin.yum:
+    name: '*'
+    state: latest
+
+- name: Install required packages
+  ansible.builtin.yum:
+    name:
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+    state: present
+
+- name: Add Docker repository
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/centos/docker-ce.repo
+    dest: /etc/yum.repos.d/docker-ce.repo
+
+#- name: Ensure Docker repo is enabled for AlmaLinux 9
+#  ansible.builtin.replace:
+#    path: /etc/yum.repos.d/docker-ce.repo
+#    regexp: 'enabled=0'
+#    replace: 'enabled=1'
+
+# Disable all unnecessary repos for ARM64
+- name: Disable Docker CE stable debuginfo repo
+  ansible.builtin.command: yum-config-manager --disable docker-ce-stable-debuginfo
+  changed_when: true
+
+- name: Disable Docker CE stable source repo
+  ansible.builtin.command: yum-config-manager --disable docker-ce-stable-source
+  changed_when: true
+
+- name: Disable Docker CE test repo
+  ansible.builtin.command: yum-config-manager --disable docker-ce-test
+  changed_when: true
+
+- name: Disable Docker CE test debuginfo repo
+  ansible.builtin.command: yum-config-manager --disable docker-ce-test-debuginfo
+  changed_when: true
+
+- name: Disable Docker CE test source repo
+  ansible.builtin.command: yum-config-manager --disable docker-ce-test-source
+  changed_when: true
+
+- name: Disable Docker CE nightly repo
+  ansible.builtin.command: yum-config-manager --disable docker-ce-nightly
+  changed_when: true
+
+- name: Disable Docker CE nightly repo
+  ansible.builtin.command: yum-config-manager --disable docker-ce-nightly-debuginfo
+  changed_when: true
+
+- name: Disable Docker CE nightly source repo
+  ansible.builtin.command: yum-config-manager --disable docker-ce-nightly-source
+  changed_when: true
+
+- name: Install Docker
+  ansible.builtin.yum:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: latest
+
+- name: Enable and start Docker service
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Add current user to docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: yes
+
+- name: Restart Docker if needed
+  ansible.builtin.meta: flush_handlers
+
+# --- AIRFLOW CONFIGURATION ---
+
+- name: Ensure airflow group exists with GID 50000
+  ansible.builtin.group:
+    name: airflow
+    gid: 50000
+    state: present
+
+- name: Ensure airflow user exists with UID 50000
+  ansible.builtin.user:
+    name: airflow
+    uid: 50000
+    group: airflow
+    state: present
+    create_home: no
+    system: yes
+
+- name: Ensure local Airflow directory exists
+  ansible.builtin.file:
+    path: /opt/airflow
+    state: directory
+    owner: airflow
+    group: airflow
+    mode: '0755'
+
+- name: Ensure Airflow log directories exist with correct permissions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: airflow
+    group: airflow
+    mode: '0775'
+  loop:
+    - /opt/airflow/logs
+
+- name: Launch Airflow container
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: /opt/airflow
+  changed_when: true
+
+# --- DOCKER COMPOSE CONFIGURATION ---
+
+# Copy docker-compose.yml to /opt
+- name: Copy docker-compose.yml to /opt
+  ansible.builtin.copy:
+    dest: /opt/docker-compose.yml
+    content: |
+      services:
+        postgres:
+          image: postgres:16.9
+          container_name: postgres
+          restart: always
+          ports:
+            - "5432:5432"
+          environment:
+            POSTGRES_USER: airflow
+            POSTGRES_PASSWORD: airflow
+            POSTGRES_DB: airflow
+      
+            TZ: "Pacific/Auckland"
+          volumes:
+            - postgres_data:/var/lib/postgresql/data
+
+        airflow:
+          image: apache/airflow:2.10.5
+          container_name: airflow
+          restart: always
+          ports:
+            - "8080:8080"
+          depends_on:
+            - postgres
+          environment:
+            TZ: "Pacific/Auckland"
+      
+            AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+            #AIRFLOW__CORE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@postgres/airflow"
+            AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@postgres/airflow"
+      
+            AIRFLOW__CORE__EXECUTOR: "CeleryExecutor"
+            #AIRFLOW__UID: "50000"
+            AIRFLOW__CORE__DEFAULT_TIMEZONE: "Pacific/Auckland"
+            AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: "Pacific/Auckland"
+            #AIRFLOW__CELERY__BROKER_URL: "redis://${var.redis_address}:6379/0"
+            AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+            #AIRFLOW__EMAIL__HTML_CONTENT_TEMPLATE: "/opt/airflow/email_templates/email-content-template.html"
+            #AIRFLOW__EMAIL__HTML_SUBJECT_TEMPLATE: "/opt/airflow/email_templates/email-subject-template.html"
+            AIRFLOW__SCHEDULER__CATCHUP_BY_DEFAULT: "False"
+            AIRFLOW__EMAIL_EMAIL_BACKEND: "airflow.utils.email.send_email_smtp"
+            AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_FAILURE: "True"
+            AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_RETRY: "True"
+            #AIRFLOW__SMTP__SMTP_HOST: "email-smtp.ap-southeast-2.amazonaws.com"
+            #AIRFLOW__SMTP__SMTP_MAIL_FROM: "Airflow<noreply@radium.co.nz>"
+            #AIRFLOW__SMTP__SMTP_PORT: "587"
+            #AIRFLOW__SMTP__SMTP_STARTTLS: "True"
+            #AIRFLOW__SMTP__SMTP_SSL: "False"
+          volumes:
+            - /opt/airflow:/opt/airflow
+          command: webserver
+
+      volumes:
+        postgres_data:
+
+- name: Launch Airflow + Postgres containers
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: /opt
+  changed_when: true
+
+- name: Open port 8080/tcp in firewalld
+  ansible.posix.firewalld:
+    port: 8080/tcp
+    permanent: true
+    state: enabled
+    immediate: true
+
+# docker compose run --rm -it airflow db migrate
+# docker compose run --rm -it airflow users create --role Admin --username admin --email admin --firstname admin --lastname admin --password admin

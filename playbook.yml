@@ -1,0 +1,7 @@
+---
+- name: Install and configure Docker on AlmaLinux 9
+  hosts: all
+  become: true
+
+  roles:
+    - docker
