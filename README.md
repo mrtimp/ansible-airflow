@@ -1,6 +1,6 @@
 # Ansible Airflow
 
-The following will configure an AlmaLinux 9 instance with Docker, Airflow 2.10.5 and Postgres 16.9.
+The following will configure an AlmaLinux 9 instance with Docker, Airflow 2.11.0 and Postgres 16.9.
 
 Defaults: 
 
@@ -103,7 +103,7 @@ services:
       - /opt/postgres-backups:/opt/postgres-backups
     
   airflow:
-    image: apache/airflow:2.10.5
+    image: apache/airflow:2.11.0
     container_name: airflow
     restart: always
     ports:
