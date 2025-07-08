@@ -83,7 +83,20 @@ chown -R airflow: /opt/airflow
 chmod 0755 /opt/airflow
 ```
 
-9. Create Docker Compose configuration file `/opt/docker-compose.yml`
+9. Custom Airflow Dockerfile `/opt/airflow/Dockerfile`
+
+```bash
+FROM apache/airflow:2.11.0
+
+USER root
+
+RUN groupadd -g 996 docker \
+  && usermod -aG docker airflow
+
+USER airflow
+```
+
+10. Create Docker Compose configuration file `/opt/docker-compose.yml`
 
 ```yaml
 services:
@@ -103,7 +116,7 @@ services:
       - /opt/postgres-backups:/opt/postgres-backups
     
   airflow:
-    image: apache/airflow:2.11.0
+    build: ./airflow
     container_name: airflow
     restart: always
     ports:
@@ -124,20 +137,21 @@ services:
       TZ: "Pacific/Auckland"
     volumes:
       - /opt/airflow:/opt/airflow
+      - /var/run/docker.sock:/var/run/docker.sock
     command: webserver
     
  volumes:
    postgres_data:
 ```
 
-10. Launch containers
+11. Launch containers
 
 ```bash
 cd /opt
 docker compose up -d
 ```
 
-11. Open port 8080/tcp in firewalld
+12. Open port 8080/tcp in firewalld
 
 # Manual Tasks
 

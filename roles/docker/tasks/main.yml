@@ -124,13 +124,20 @@
   loop:
     - /opt/airflow/logs
 
-- name: Launch Airflow container
-  ansible.builtin.command:
-    cmd: docker compose up -d
-    chdir: /opt/airflow
-  changed_when: true
-
 # --- DOCKER COMPOSE CONFIGURATION ---
+
+- name: Custom Airflow Dockerfile
+  ansible.builtin.copy:
+    dest: /opt/airflow/Dockerfile
+    content: |
+      FROM apache/airflow:2.11.0
+      
+      USER root
+      
+      RUN groupadd -g 996 docker \
+        && usermod -aG docker airflow
+      
+      USER airflow
 
 # Copy docker-compose.yml to /opt
 - name: Copy docker-compose.yml to /opt
@@ -154,7 +161,7 @@
             - /opt/postgres-backups:/opt/postgres-backups
 
         airflow:
-          image: apache/airflow:2.11.0
+          build: ./airflow
           container_name: airflow
           restart: always
           ports:
@@ -175,6 +182,7 @@
             TZ: "Pacific/Auckland"
           volumes:
             - /opt/airflow:/opt/airflow
+            - /var/run/docker.sock:/var/run/docker.sock
           command: webserver
 
       volumes:
