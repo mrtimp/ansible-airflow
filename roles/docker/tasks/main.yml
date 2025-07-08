@@ -173,7 +173,7 @@
             AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_FAILURE: "True"
             AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_RETRY: "True"
             #AIRFLOW__SMTP__SMTP_HOST: "email-smtp.ap-southeast-2.amazonaws.com"
-            #AIRFLOW__SMTP__SMTP_MAIL_FROM: "Airflow<noreply@radium.co.nz>"
+            #AIRFLOW__SMTP__SMTP_MAIL_FROM: "Airflow<noreply@example.com>"
             #AIRFLOW__SMTP__SMTP_PORT: "587"
             #AIRFLOW__SMTP__SMTP_STARTTLS: "True"
             #AIRFLOW__SMTP__SMTP_SSL: "False"
