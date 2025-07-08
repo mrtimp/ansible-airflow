@@ -2,6 +2,11 @@
 
 The following will configure an AlmaLinux 9 instance with Docker, Airflow 2.10.5 and Postgres 16.9.
 
+Defaults: 
+
+* The Airflow application data will be in /opt/airflow
+* You can put Postgres database dumps into /opt/postgres-backups to have them available inside the container for restore
+
 # Prep
 
 Ensure that:
@@ -92,10 +97,10 @@ services:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
-   
       TZ: "Pacific/Auckland"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - /opt/postgres-backups:/opt/postgres-backups
     
   airflow:
     image: apache/airflow:2.10.5
@@ -106,29 +111,17 @@ services:
     depends_on:
       - postgres
     environment:
-      TZ: "Pacific/Auckland"
-    
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      #AIRFLOW__CORE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@postgres/airflow"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@postgres/airflow"
-    
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@postgres/airflow"    
       AIRFLOW__CORE__EXECUTOR: "CeleryExecutor"
-      #AIRFLOW__UID: "50000"
       AIRFLOW__CORE__DEFAULT_TIMEZONE: "Pacific/Auckland"
       AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: "Pacific/Auckland"
-      #AIRFLOW__CELERY__BROKER_URL: "redis://${var.redis_address}:6379/0"
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
-      #AIRFLOW__EMAIL__HTML_CONTENT_TEMPLATE: "/opt/airflow/email_templates/email-content-template.html"
-      #AIRFLOW__EMAIL__HTML_SUBJECT_TEMPLATE: "/opt/airflow/email_templates/email-subject-template.html"
       AIRFLOW__SCHEDULER__CATCHUP_BY_DEFAULT: "False"
       AIRFLOW__EMAIL_EMAIL_BACKEND: "airflow.utils.email.send_email_smtp"
       AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_FAILURE: "True"
       AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_RETRY: "True"
-      #AIRFLOW__SMTP__SMTP_HOST: "email-smtp.ap-southeast-2.amazonaws.com"
-      #AIRFLOW__SMTP__SMTP_MAIL_FROM: "Airflow<noreply@example.com>"
-      #AIRFLOW__SMTP__SMTP_PORT: "587"
-      #AIRFLOW__SMTP__SMTP_STARTTLS: "True"
-      #AIRFLOW__SMTP__SMTP_SSL: "False"
+      TZ: "Pacific/Auckland"
     volumes:
       - /opt/airflow:/opt/airflow
     command: webserver
@@ -145,3 +138,19 @@ docker compose up -d
 ```
 
 11. Open port 8080/tcp in firewalld
+
+# Manual Tasks
+
+### Perform initial Airflow init/bootstrap and DB migration
+
+```bash
+cd /opt
+docker compose run --rm -it airflow db migrate
+```
+
+### Create an admin user for testing  
+
+```bash
+cd /opt
+docker compose run --rm -it airflow users create --role Admin --username admin --email admin --firstname admin --lastname admin --password admin
+```
