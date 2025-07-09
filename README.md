@@ -90,6 +90,7 @@ FROM apache/airflow:2.11.0
 
 USER root
 
+RUN ln -s /opt/airflow /home/airflow/airflow
 RUN groupadd -g 996 docker \
   && usermod -aG docker airflow
 
@@ -99,49 +100,93 @@ USER airflow
 10. Create Docker Compose configuration file `/opt/docker-compose.yml`
 
 ```yaml
-services:
-  postgres:
-    image: postgres:16.9
-    container_name: postgres
-    restart: always
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
-      TZ: "Pacific/Auckland"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - /opt/postgres-backups:/opt/postgres-backups
-    
-  airflow:
-    build: ./airflow
-    container_name: airflow
-    restart: always
-    ports:
-      - "8080:8080"
-    depends_on:
-      - postgres
-    environment:
-      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@postgres/airflow"    
-      AIRFLOW__CORE__EXECUTOR: "CeleryExecutor"
-      AIRFLOW__CORE__DEFAULT_TIMEZONE: "Pacific/Auckland"
-      AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: "Pacific/Auckland"
-      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
-      AIRFLOW__SCHEDULER__CATCHUP_BY_DEFAULT: "False"
-      AIRFLOW__EMAIL_EMAIL_BACKEND: "airflow.utils.email.send_email_smtp"
-      AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_FAILURE: "True"
-      AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_RETRY: "True"
-      TZ: "Pacific/Auckland"
-    volumes:
-      - /opt/airflow:/opt/airflow
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: webserver
-    
- volumes:
-   postgres_data:
+x-airflow-common:
+  &airflow-common
+  build: ./airflow
+  container_name: airflow-scheduler
+  restart: always
+  depends_on:
+    - postgres
+  environment:
+    AIRFLOW__CELERY__BROKER_URL: "redis://redis:6379/0"
+    AIRFLOW__CELERY__RESULT_BACKEND: "db+postgresql://airflow:airflow@postgres/airflow"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__CORE__EXECUTOR: "CeleryExecutor"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: "Pacific/Auckland"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@postgres/airflow"
+    AIRFLOW__EMAIL_EMAIL_BACKEND: "airflow.utils.email.send_email_smtp"
+    AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_FAILURE: "True"
+    AIRFLOW__EMAIL__DEFAULT_EMAIL_ON_RETRY: "True"
+    AIRFLOW__SCHEDULER__CATCHUP_BY_DEFAULT: "False"
+    AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: "Pacific/Auckland"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "True"
+    TZ: "Pacific/Auckland"
+  volumes:
+    - /opt/airflow:/opt/airflow
+    - /var/run/docker.sock:/var/run/docker.sock
+
+  services:
+    postgres:
+      image: postgres:16.9
+      container_name: postgres
+      restart: always
+      ports:
+        - "5432:5432"
+      environment:
+        POSTGRES_USER: airflow
+        POSTGRES_PASSWORD: airflow
+        POSTGRES_DB: airflow
+        TZ: "Pacific/Auckland"
+      healthcheck:
+        test: ["CMD", "pg_isready", "-U", "airflow"]
+        interval: 10s
+        retries: 5
+        start_period: 5s
+      volumes:
+        - postgres_data:/var/lib/postgresql/data
+        - /opt/postgres-backups:/opt/postgres-backups
+
+    redis:
+      # Redis is limited to 7.2-bookworm due to licencing change
+      # https://redis.io/blog/redis-adopts-dual-source-available-licensing/
+      image: redis:7.2-bookworm
+      container_name: redis
+      expose:
+        - 6379
+      healthcheck:
+        test: ["CMD", "redis-cli", "ping"]
+        interval: 10s
+        timeout: 30s
+        retries: 50
+        start_period: 30s
+      restart: always
+
+    airflow-scheduler:
+      <<: *airflow-common
+      container_name: airflow-scheduler
+      command: scheduler
+      healthcheck:
+        test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $(hostname)"]
+        interval: 30s
+        timeout: 10s
+        retries: 5
+        start_period: 30s
+
+    airflow-webserver:
+      <<: *airflow-common
+      container_name: airflow-webserver
+      ports:
+        - "8080:8080"
+      command: webserver
+      healthcheck:
+        test: ["CMD", "curl", "--fail", "http://localhost:8080/airflow/health"]
+        interval: 30s
+        timeout: 10s
+        retries: 5
+        start_period: 30s
+
+  volumes:
+    postgres_data:
 ```
 
 11. Launch containers
@@ -168,3 +213,19 @@ docker compose run --rm -it airflow db migrate
 cd /opt
 docker compose run --rm -it airflow users create --role Admin --username admin --email admin --firstname admin --lastname admin --password admin
 ```
+
+### Backup existing Airflow data
+
+```bash
+cd ~airflow/airflow
+tar --exclude "logs/*" -czvf ~/airflow-data.tgz .
+```
+
+### Restore an Airflow Postgres database dump
+
+```bash
+cd /opt
+docker exec -it postgres sh -c "gunzip -cd /opt/postgres-backups/airflow.db.gz | psql -U airflow -W -h localhost -d airflow"
+```
+
+### Execute Python to convert dags to newer format
